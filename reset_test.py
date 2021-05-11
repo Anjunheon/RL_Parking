@@ -9,6 +9,7 @@ import pyautogui
 import pytesseract
 from PIL import Image
 
+
 def sim_start():  # 시뮬레이터 실행
     # print(pyautogui.position())  # (1125, 455)
     pyautogui.click(1125, 455)
@@ -83,7 +84,6 @@ def capture_goal():
 
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract'
-
 
 # 처음 실행 시 충돌 물체 인식 후 리셋 관련 문제 때문에 중지 후 다시 시작
 client, car_controls = sim_start()
