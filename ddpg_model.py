@@ -287,7 +287,7 @@ actor_lr = 0.001
 critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
 actor_optimizer = tf.keras.optimizers.Adam(actor_lr)
 
-total_episodes = 10000
+total_episodes = 200
 # Discount factor for future rewards
 gamma = 0.99
 # Used to update target networks
@@ -447,9 +447,23 @@ plt.xlabel("Episode")
 plt.ylabel("Avg. Epsiodic Reward")
 plt.show()
 
-# Save the weights
-actor_model.save_weights("parking_actor.h5")
-critic_model.save_weights("parking_critic.h5")
+now = time.localtime()
 
-target_actor.save_weights("parking_target_actor.h5")
-target_critic.save_weights("parking_target_critic.h5")
+# Save the weights
+actor_model.save_weights("./save_models/parking_actor_" +
+                         now.tm_year[3:] + now.tm_mon.zfill(2) + now.tm_mday.zfill(2) + "_" +
+                         now.tm_hour.zfill(2) + now.tm_min.zfill(2) + now.tm_sec.zfill(2) +
+                         ".h5")
+critic_model.save_weights("./save_models/parking_critic" +
+                          now.tm_year[3:] + now.tm_mon.zfill(2) + now.tm_mday.zfill(2) + "_" +
+                          now.tm_hour.zfill(2) + now.tm_min.zfill(2) + now.tm_sec.zfill(2) +
+                          ".h5")
+
+target_actor.save_weights("./save_models/parking_target_actor" +
+                          now.tm_year[3:] + now.tm_mon.zfill(2) + now.tm_mday.zfill(2) + "_" +
+                          now.tm_hour.zfill(2) + now.tm_min.zfill(2) + now.tm_sec.zfill(2) +
+                          ".h5")
+target_critic.save_weights("./save_models/parking_target_critic" +
+                           now.tm_year[3:] + now.tm_mon.zfill(2) + now.tm_mday.zfill(2) + "_" +
+                           now.tm_hour.zfill(2) + now.tm_min.zfill(2) + now.tm_sec.zfill(2) +
+                           ".h5")
