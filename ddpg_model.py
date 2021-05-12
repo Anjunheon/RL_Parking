@@ -264,6 +264,27 @@ def capture_goal():  # 목표 지점의 언리얼 좌표 -> 에어심 좌표 변
     return goal_xy
 
 
+def save_model():
+    # Save the weights
+    actor_model.save_weights("./save_models/parking_actor_" +
+                             str(now.tm_year)[2:] + str(now.tm_mon).zfill(2) + str(now.tm_mday).zfill(2) + "_" +
+                             str(now.tm_hour).zfill(2) + str(now.tm_min).zfill(2) + str(now.tm_sec).zfill(2) +
+                             "_ep" + str(ep_cnt) + ".h5")
+    critic_model.save_weights("./save_models/parking_critic_" +
+                              str(now.tm_year)[2:] + str(now.tm_mon).zfill(2) + str(now.tm_mday).zfill(2) + "_" +
+                              str(now.tm_hour).zfill(2) + str(now.tm_min).zfill(2) + str(now.tm_sec).zfill(2) +
+                              "_ep" + str(ep_cnt) + ".h5")
+
+    target_actor.save_weights("./save_models/parking_target_actor_" +
+                              str(now.tm_year)[2:] + str(now.tm_mon).zfill(2) + str(now.tm_mday).zfill(2) + "_" +
+                              str(now.tm_hour).zfill(2) + str(now.tm_min).zfill(2) + str(now.tm_sec).zfill(2) +
+                              "_ep" + str(ep_cnt) + ".h5")
+    target_critic.save_weights("./save_models/parking_target_critic_" +
+                               str(now.tm_year)[2:] + str(now.tm_mon).zfill(2) + str(now.tm_mday).zfill(2) + "_" +
+                               str(now.tm_hour).zfill(2) + str(now.tm_min).zfill(2) + str(now.tm_sec).zfill(2) +
+                               "_ep" + str(ep_cnt) + ".h5")
+
+
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract'
 
 
@@ -308,137 +329,142 @@ client, car_controls = sim_start()
 
 time.sleep(2)
 
-# Takes about 4 min to train
-for ep in range(total_episodes):
+ep_cnt = 0
+try:
+    # Takes about 4 min to train
+    for ep in range(total_episodes):
+        ep_cnt = ep
+        # prev_state = env.reset()
+        prev_state = [client.getCarState().kinematics_estimated.position.x_val,  # 차량 위치 x 좌표
+                      client.getCarState().kinematics_estimated.position.y_val,  # 차량 위치 y 좌표
+                      client.getCarState().speed,                                # 차량 속도
+                      client.getCarControls().brake,                             # 브레이크
+                      client.getCarControls().steering,                          # 핸들 방향
+                      client.getCarControls().throttle,                          # 차량 이동
+                      client.getCarControls().manual_gear,                       # 후진 기어
+                      client.getDistanceSensorData("Distance1").distance,        # 전방 거리 센서
+                      client.getDistanceSensorData("Distance2").distance,        # 우측 거리 센서
+                      client.getDistanceSensorData("Distance3").distance,        # 후방 거리 센서
+                      client.getDistanceSensorData("Distance4").distance]        # 좌측 거리 센서
 
-    # prev_state = env.reset()
-    prev_state = [client.getCarState().kinematics_estimated.position.x_val,  # 차량 위치 x 좌표
-                  client.getCarState().kinematics_estimated.position.y_val,  # 차량 위치 y 좌표
-                  client.getCarState().speed,                                # 차량 속도
-                  client.getCarControls().brake,                             # 브레이크
-                  client.getCarControls().steering,                          # 핸들 방향
-                  client.getCarControls().throttle,                          # 차량 이동
-                  client.getCarControls().manual_gear,                       # 후진 기어
-                  client.getDistanceSensorData("Distance1").distance,        # 전방 거리 센서
-                  client.getDistanceSensorData("Distance2").distance,        # 우측 거리 센서
-                  client.getDistanceSensorData("Distance3").distance,        # 후방 거리 센서
-                  client.getDistanceSensorData("Distance4").distance]        # 좌측 거리 센서
+        episodic_reward = 0
 
-    episodic_reward = 0
+        is_captured = 0
+        count = 0
+        start_time = 0
+        end_time = 0
 
-    is_captured = 0
-    count = 0
-    start_time = 0
-    end_time = 0
+        reward = 0
+        done = False
 
-    reward = 0
-    done = False
+        while True:
+            if is_captured == 0:
+                goal = capture_goal()
+                is_captured = 1
 
-    while True:
-        if is_captured == 0:
-            goal = capture_goal()
-            is_captured = 1
+            tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state), 0)
 
-        tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state), 0)
+            action = policy(tf_prev_state, ou_noise)
+            action = tf.squeeze(action)
 
-        action = policy(tf_prev_state, ou_noise)
-        action = tf.squeeze(action)
+            print('episode :', ep, '|',
+                  'brake :', round(float(action[0]), 3), '|', 'steering :', round(float(action[1]), 3), '|',
+                  'throttle :', round(float(abs(action[2])), 3), '|', 'direction :', round(float(action[3]), 3), '|',
+                  'total_reward :', round(episodic_reward, 6))
 
-        print('episode :', ep, '|',
-              'brake :', round(float(action[0]), 3), '|', 'steering :', round(float(action[1]), 3), '|',
-              'throttle :', round(float(abs(action[2])), 3), '|', 'direction :', round(float(action[3]), 3), '|',
-              'total_reward :', round(episodic_reward, 6))
-
-        car_controls.brake = 1 if float(action[0]) > 0.5 else 0
-        car_controls.steering = float(action[1])
-        car_controls.throttle = float(abs(action[2]))
-        if action[3]:
-            car_controls.manual_gear = 0
-            car_controls.is_manual_gear = False
-        else:
-            car_controls.manual_gear = -1
-            car_controls.is_manual_gear = True
-
-        client.setCarControls(car_controls)
-
-        # Recieve state and reward from environment.
-        # state, reward, done, info = env.step(action)
-        state = [client.getCarState().kinematics_estimated.position.x_val,  # 차량 위치 x 좌표
-                 client.getCarState().kinematics_estimated.position.y_val,  # 차량 위치 y 좌표
-                 client.getCarState().speed,                                # 차량 속도
-                 client.getCarControls().brake,                             # 브레이크
-                 client.getCarControls().steering,                          # 핸들 방향
-                 client.getCarControls().throttle,                          # 차량 이동
-                 client.getCarControls().manual_gear,                       # 후진 기어
-                 client.getDistanceSensorData("Distance1").distance,        # 전방 거리 센서
-                 client.getDistanceSensorData("Distance2").distance,        # 우측 거리 센서
-                 client.getDistanceSensorData("Distance3").distance,        # 후방 거리 센서
-                 client.getDistanceSensorData("Distance4").distance]        # 좌측 거리 센서
-
-        # reward = 1/1000 if ((client.simGetCollisionInfo().object_name).lower()).find('pipesmall') >= 0 else -1
-
-        if (((client.simGetCollisionInfo().object_name).lower()).find('pipesmall') >= 0):
-            done = False
-        else:
-            print('Episode', ep, ': Crash!!')
-            reward += -1
-            done = True
-
-        if (goal[0] > 0):
-            if (6 < client.getCarState().kinematics_estimated.position.x_val < 8 and
-                    goal[1] - 1 < client.getCarState().kinematics_estimated.position.y_val < goal[1] + 1):
-                print('Episode', ep, ': Success!!')
-                reward += 1
-                done = True
-        elif (goal[0] < 0):
-            if (-9 < client.getCarState().kinematics_estimated.position.x_val < -7 and
-                    goal[1] - 1 < client.getCarState().kinematics_estimated.position.y_val < goal[1] + 1):
-                print('Episode', ep, ': Success!!')
-                reward += 1
-                done = True
-
-        if prev_state[0] == state[0] and prev_state[1] == state[1]:
-            reward += -1/1000
-
-            if count == 0:
-                count += 1
-                start_time = time.time()
-                end_time = time.time()
+            car_controls.brake = 1 if float(action[0]) > 0.5 else 0
+            car_controls.steering = float(action[1])
+            car_controls.throttle = float(abs(action[2]))
+            if action[3]:
+                car_controls.manual_gear = 0
+                car_controls.is_manual_gear = False
             else:
-                count += 1
-                end_time = time.time()
+                car_controls.manual_gear = -1
+                car_controls.is_manual_gear = True
 
-                if end_time - start_time >= 10:
-                    print('Episode', ep, ': Don''t just stand there!!')
-                    count = 0
-                    reward += -1
+            client.setCarControls(car_controls)
+
+            # Recieve state and reward from environment.
+            # state, reward, done, info = env.step(action)
+            state = [client.getCarState().kinematics_estimated.position.x_val,  # 차량 위치 x 좌표
+                     client.getCarState().kinematics_estimated.position.y_val,  # 차량 위치 y 좌표
+                     client.getCarState().speed,                                # 차량 속도
+                     client.getCarControls().brake,                             # 브레이크
+                     client.getCarControls().steering,                          # 핸들 방향
+                     client.getCarControls().throttle,                          # 차량 이동
+                     client.getCarControls().manual_gear,                       # 후진 기어
+                     client.getDistanceSensorData("Distance1").distance,        # 전방 거리 센서
+                     client.getDistanceSensorData("Distance2").distance,        # 우측 거리 센서
+                     client.getDistanceSensorData("Distance3").distance,        # 후방 거리 센서
+                     client.getDistanceSensorData("Distance4").distance]        # 좌측 거리 센서
+
+            # reward = 1/1000 if ((client.simGetCollisionInfo().object_name).lower()).find('pipesmall') >= 0 else -1
+
+            if (((client.simGetCollisionInfo().object_name).lower()).find('pipesmall') >= 0):
+                done = False
+            else:
+                print('Episode', ep, ': Crash!!')
+                reward += -1
+                done = True
+
+            if (goal[0] > 0):
+                if (6 < client.getCarState().kinematics_estimated.position.x_val < 8 and
+                        goal[1] - 1 < client.getCarState().kinematics_estimated.position.y_val < goal[1] + 1):
+                    print('Episode', ep, ': Success!!')
+                    reward += 1
                     done = True
-        else:
-            reward += 1/100000
-            count = 0
+            elif (goal[0] < 0):
+                if (-9 < client.getCarState().kinematics_estimated.position.x_val < -7 and
+                        goal[1] - 1 < client.getCarState().kinematics_estimated.position.y_val < goal[1] + 1):
+                    print('Episode', ep, ': Success!!')
+                    reward += 1
+                    done = True
 
-        buffer.record((prev_state, action, reward, state))
-        episodic_reward += reward
+            if prev_state[0] == state[0] and prev_state[1] == state[1]:
+                reward += -1/1000
 
-        buffer.learn()
-        update_target(target_actor.variables, actor_model.variables, tau)
-        update_target(target_critic.variables, critic_model.variables, tau)
+                if count == 0:
+                    count += 1
+                    start_time = time.time()
+                    end_time = time.time()
+                else:
+                    count += 1
+                    end_time = time.time()
 
-        # End this episode when `done` is True
-        if done:
-            print('Final Reward :', episodic_reward)
-            sim_stop()
-            client, car_controls = sim_start()
-            break
+                    if end_time - start_time >= 10:
+                        print('Episode', ep, ': Don''t just stand there!!')
+                        count = 0
+                        reward += -1
+                        done = True
+            else:
+                reward += 1/100000
+                count = 0
 
-        prev_state = state
+            buffer.record((prev_state, action, reward, state))
+            episodic_reward += reward
 
-    ep_reward_list.append(episodic_reward)
+            buffer.learn()
+            update_target(target_actor.variables, actor_model.variables, tau)
+            update_target(target_critic.variables, critic_model.variables, tau)
 
-    # Mean of last 40 episodes
-    avg_reward = np.mean(ep_reward_list[-40:])
-    print("Episode * {} * Avg Reward is ==> {}".format(ep, avg_reward))
-    avg_reward_list.append(avg_reward)
+            # End this episode when `done` is True
+            if done:
+                print('Final Reward :', episodic_reward)
+                is_captured = 0
+                sim_stop()
+                client, car_controls = sim_start()
+                break
+
+            prev_state = state
+
+        ep_reward_list.append(episodic_reward)
+
+        # Mean of last 40 episodes
+        avg_reward = np.mean(ep_reward_list[-40:])
+        print("Episode * {} * Avg Reward is ==> {}".format(ep, avg_reward))
+        avg_reward_list.append(avg_reward)
+except:
+    save_model()
 
 # Plotting graph
 # Episodes versus Avg. Rewards
@@ -449,21 +475,4 @@ plt.show()
 
 now = time.localtime()
 
-# Save the weights
-actor_model.save_weights("./save_models/parking_actor_" +
-                         now.tm_year[3:] + now.tm_mon.zfill(2) + now.tm_mday.zfill(2) + "_" +
-                         now.tm_hour.zfill(2) + now.tm_min.zfill(2) + now.tm_sec.zfill(2) +
-                         ".h5")
-critic_model.save_weights("./save_models/parking_critic" +
-                          now.tm_year[3:] + now.tm_mon.zfill(2) + now.tm_mday.zfill(2) + "_" +
-                          now.tm_hour.zfill(2) + now.tm_min.zfill(2) + now.tm_sec.zfill(2) +
-                          ".h5")
-
-target_actor.save_weights("./save_models/parking_target_actor" +
-                          now.tm_year[3:] + now.tm_mon.zfill(2) + now.tm_mday.zfill(2) + "_" +
-                          now.tm_hour.zfill(2) + now.tm_min.zfill(2) + now.tm_sec.zfill(2) +
-                          ".h5")
-target_critic.save_weights("./save_models/parking_target_critic" +
-                           now.tm_year[3:] + now.tm_mon.zfill(2) + now.tm_mday.zfill(2) + "_" +
-                           now.tm_hour.zfill(2) + now.tm_min.zfill(2) + now.tm_sec.zfill(2) +
-                           ".h5")
+save_model()
