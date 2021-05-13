@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import setup_path
 import airsim
 import time
+import os
 import pyautogui
 import pytesseract
 from PIL import Image
@@ -16,6 +17,13 @@ import tracking
 
 physical_devices = tf.config.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
+
+start_ymd = int(float(time.strftime('%y%m%d')))
+start_hm = int(float(time.strftime('%H%M')))
+start_time = str(start_ymd) + '_' + str(start_hm)
+
+os.makedirs('./tracking/' + start_time, exist_ok=True)
+os.makedirs('./save_models/' + start_time, exist_ok=True)
 
 num_states = 11
 num_actions = 4
@@ -273,16 +281,14 @@ def capture_goal():  # 목표 지점의 언리얼 좌표 -> 에어심 좌표 변
 
 def save_model():
     # Save the weights
-    actor_model.save(".\\save_models\\" + start_time + "\\parking_actor_ep" + str(ep_cnt+1) + ".h5")
-    critic_model.save(".\\save_models\\" + start_time + "\\parking_critic_ep" + str(ep_cnt+1) + ".h5")
+    actor_model.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_actor_ep" + str(ep_cnt+1) + ".h5")
+    critic_model.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_critic_ep" + str(ep_cnt+1) + ".h5")
 
-    target_actor.save(".\\save_models\\" + start_time + "\\parking_target_actor_ep" + str(ep_cnt+1) + ".h5")
-    target_critic.save(".\\save_models\\" + start_time + "\\parking_target_critic_ep" + str(ep_cnt+1) + ".h5")
+    target_actor.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_target_actor_ep" + str(ep_cnt+1) + ".h5")
+    target_critic.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_target_critic_ep" + str(ep_cnt+1) + ".h5")
 
 
-now = time.localtime()
-start_time = str(now.tm_year)[2:] + str(now.tm_mon).zfill(2) + str(now.tm_mday).zfill(2) + "_" +\
-             str(now.tm_hour).zfill(2) + str(now.tm_min).zfill(2)
+
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract'
 
@@ -306,7 +312,7 @@ actor_lr = 0.001
 critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
 actor_optimizer = tf.keras.optimizers.Adam(actor_lr)
 
-total_episodes = 100
+total_episodes = 3
 # Discount factor for future rewards
 gamma = 0.99
 # Used to update target networks
@@ -330,6 +336,7 @@ while collision.find('pipesmall') < 0 and collision != '':
 time.sleep(2)
 
 ep_cnt = 0
+img = []
 
 # Takes about 4 min to train
 for ep in range(total_episodes):
@@ -405,7 +412,7 @@ for ep in range(total_episodes):
         
         # 차량 이동 경로 기록
         if ep == 0 or ep+1 % 10 == 0:
-            tracking.tracking(client, img)
+            img = tracking.tracking(img, state[0], state[1])
 
         # reward = 1/1000 if ((client.simGetCollisionInfo().object_name).lower()).find('pipesmall') >= 0 else -1
 
@@ -466,14 +473,18 @@ for ep in range(total_episodes):
             print('Final Reward :', episodic_reward)
             print('Total Steps :', total_steps)
 
+            if ep == 0 or ep + 1 % 10 == 0:
+                cv.imwrite(".\\tracking\\" + str(start_ymd) + '_' + str(start_hm) + "\\ep" + str(ep+1) + ".png", img)
+                print('image saved')
+                sim_stop()
+                exit()
+
             is_captured = 0
 
             sim_stop()
             sim_stop()
             client, car_controls = sim_start()
 
-            if ep == 0 or ep + 1 % 10 == 0:
-                cv.imwrite('.\\tracking\\' + str(start_time) + '\\ep' + str(ep+1) + '.png', img)
             break
 
         prev_state = state
@@ -489,6 +500,7 @@ for ep in range(total_episodes):
 save_model()
 
 sim_stop()
+sim_stop()
 
 # Plotting graph
 # Episodes versus Avg. Rewards
@@ -496,5 +508,5 @@ plt.plot(avg_reward_list)
 plt.xlabel("Episode")
 plt.ylabel("Avg. Epsiodic Reward")
 ct = time.localtime()
-plt.savefig('.\\graph\\' + start_time + '.png')
+plt.savefig('.\\graph\\' + str(start_ymd) + '_' + str(start_hm) + '.png')
 plt.show()

@@ -4,7 +4,7 @@ import numpy as np
 import time
 
 
-def tracking(client, mapimg):
+def tracking(mapimg, x_val, y_val):
     img_y, img_x = np.shape(mapimg)
 
     x_len = 22
@@ -13,8 +13,8 @@ def tracking(client, mapimg):
     x_block = round(np.shape(mapimg)[1]/x_len, 1)
     y_block = round(np.shape(mapimg)[0]/y_len, 1)
 
-    x = round(client.getCarState().kinematics_estimated.position.x_val, 1) + 11
-    y = round(client.getCarState().kinematics_estimated.position.y_val, 1) + 41
+    x = round(x_val, 1) + 11
+    y = round(y_val, 1) + 41
 
     x = int(x * x_block)
     y = int(y * y_block)
@@ -25,3 +25,5 @@ def tracking(client, mapimg):
     y = img_y-3 if y+2 > img_y-3 else y
 
     mapimg[y-2:y+2, x-2:x+2] = 255
+
+    return mapimg
