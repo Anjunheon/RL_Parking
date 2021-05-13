@@ -58,8 +58,8 @@ s_t = time.time()
 e_t = time.time()
 
 while e_t - s_t < 15:
-    x = round(client.getCarState().kinematics_estimated.position.x_val, 1) + 12
-    y = round(client.getCarState().kinematics_estimated.position.y_val, 1) + 42
+    x = round(client.getCarState().kinematics_estimated.position.x_val, 1) + 11
+    y = round(client.getCarState().kinematics_estimated.position.y_val, 1) + 41
 
     x = int(x * x_block)
     y = int(y * y_block)

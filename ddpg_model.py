@@ -2,6 +2,7 @@ import gym
 import tensorflow as tf
 from tensorflow.keras import layers
 import numpy as np
+import cv2 as cv
 import matplotlib.pyplot as plt
 
 import setup_path
@@ -10,6 +11,8 @@ import time
 import pyautogui
 import pytesseract
 from PIL import Image
+
+import tracking
 
 physical_devices = tf.config.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
@@ -21,6 +24,7 @@ upper_bound = 1
 lower_bound = 0
 
 api_control = True
+
 
 class OUActionNoise:
     def __init__(self, mean, std_deviation, theta=0.15, dt=1e-2, x_initial=None):
@@ -269,29 +273,18 @@ def capture_goal():  # 목표 지점의 언리얼 좌표 -> 에어심 좌표 변
 
 def save_model():
     # Save the weights
-    now = time.localtime()
+    actor_model.save(".\\save_models\\" + start_time + "\\parking_actor_ep" + str(ep_cnt+1) + ".h5")
+    critic_model.save(".\\save_models\\" + start_time + "\\parking_critic_ep" + str(ep_cnt+1) + ".h5")
 
-    actor_model.save(".\\save_models\\parking_actor_" +
-                     str(now.tm_year)[2:] + str(now.tm_mon).zfill(2) + str(now.tm_mday).zfill(2) + "_" +
-                     str(now.tm_hour).zfill(2) + str(now.tm_min).zfill(2) + str(now.tm_sec).zfill(2) +
-                     "_ep" + str(ep_cnt+1) + ".h5")
-    critic_model.save(".\\save_models\\parking_critic_" +
-                      str(now.tm_year)[2:] + str(now.tm_mon).zfill(2) + str(now.tm_mday).zfill(2) + "_" +
-                      str(now.tm_hour).zfill(2) + str(now.tm_min).zfill(2) + str(now.tm_sec).zfill(2) +
-                      "_ep" + str(ep_cnt+1) + ".h5")
+    target_actor.save(".\\save_models\\" + start_time + "\\parking_target_actor_ep" + str(ep_cnt+1) + ".h5")
+    target_critic.save(".\\save_models\\" + start_time + "\\parking_target_critic_ep" + str(ep_cnt+1) + ".h5")
 
-    target_actor.save(".\\save_models\\parking_target_actor_" +
-                      str(now.tm_year)[2:] + str(now.tm_mon).zfill(2) + str(now.tm_mday).zfill(2) + "_" +
-                      str(now.tm_hour).zfill(2) + str(now.tm_min).zfill(2) + str(now.tm_sec).zfill(2) +
-                      "_ep" + str(ep_cnt+1) + ".h5")
-    target_critic.save(".\\save_models\\parking_target_critic_" +
-                       str(now.tm_year)[2:] + str(now.tm_mon).zfill(2) + str(now.tm_mday).zfill(2) + "_" +
-                       str(now.tm_hour).zfill(2) + str(now.tm_min).zfill(2) + str(now.tm_sec).zfill(2) +
-                       "_ep" + str(ep_cnt+1) + ".h5")
 
+now = time.localtime()
+start_time = str(now.tm_year)[2:] + str(now.tm_mon).zfill(2) + str(now.tm_mday).zfill(2) + "_" +\
+             str(now.tm_hour).zfill(2) + str(now.tm_min).zfill(2)
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract'
-
 
 std_dev = 0.2
 ou_noise = OUActionNoise(mean=np.zeros(1), std_deviation=float(std_dev) * np.ones(1))
@@ -313,7 +306,7 @@ actor_lr = 0.001
 critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
 actor_optimizer = tf.keras.optimizers.Adam(actor_lr)
 
-total_episodes = 10000
+total_episodes = 100
 # Discount factor for future rewards
 gamma = 0.99
 # Used to update target networks
@@ -328,9 +321,11 @@ ep_reward_list = []
 avg_reward_list = []
 
 # 처음 실행 시 충돌 물체 인식 후 리셋 관련 문제 때문에 중지 후 다시 시작
-_ = sim_start()
-sim_stop()
 client, car_controls = sim_start()
+collision = (client.simGetCollisionInfo().object_name).lower()
+while collision.find('pipesmall') < 0 and collision != '':
+    sim_stop()
+    client, car_controls = sim_start()
 
 time.sleep(2)
 
@@ -339,6 +334,8 @@ ep_cnt = 0
 # Takes about 4 min to train
 for ep in range(total_episodes):
     ep_cnt = ep
+    if ep == 0 or ep + 1 % 10 == 0:
+        img = cv.imread('map.png', cv.IMREAD_GRAYSCALE)
     # prev_state = env.reset()
     prev_state = [client.getCarState().kinematics_estimated.position.x_val,  # 차량 위치 x 좌표
                   client.getCarState().kinematics_estimated.position.y_val,  # 차량 위치 y 좌표
@@ -405,10 +402,15 @@ for ep in range(total_episodes):
                  client.getDistanceSensorData("Distance2").distance,        # 우측 거리 센서
                  client.getDistanceSensorData("Distance3").distance,        # 후방 거리 센서
                  client.getDistanceSensorData("Distance4").distance]        # 좌측 거리 센서
+        
+        # 차량 이동 경로 기록
+        if ep == 0 or ep+1 % 10 == 0:
+            tracking.tracking(client, img)
 
         # reward = 1/1000 if ((client.simGetCollisionInfo().object_name).lower()).find('pipesmall') >= 0 else -1
 
-        if (((client.simGetCollisionInfo().object_name).lower()).find('pipesmall') >= 0):
+        collision = (client.simGetCollisionInfo().object_name).lower()
+        if collision.find('pipesmall') >= 0 or collision == '':
             done = False
         else:
             print('Episode', ep+1, ': Crash!!')
@@ -463,9 +465,15 @@ for ep in range(total_episodes):
         if done:
             print('Final Reward :', episodic_reward)
             print('Total Steps :', total_steps)
+
             is_captured = 0
+
+            sim_stop()
             sim_stop()
             client, car_controls = sim_start()
+
+            if ep == 0 or ep + 1 % 10 == 0:
+                cv.imwrite('.\\tracking\\' + str(start_time) + '\\ep' + str(ep+1) + '.png', img)
             break
 
         prev_state = state
@@ -487,5 +495,6 @@ sim_stop()
 plt.plot(avg_reward_list)
 plt.xlabel("Episode")
 plt.ylabel("Avg. Epsiodic Reward")
+ct = time.localtime()
+plt.savefig('.\\graph\\' + start_time + '.png')
 plt.show()
-
