@@ -312,7 +312,7 @@ actor_lr = 0.001
 critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
 actor_optimizer = tf.keras.optimizers.Adam(actor_lr)
 
-total_episodes = 3
+total_episodes = 10
 # Discount factor for future rewards
 gamma = 0.99
 # Used to update target networks
@@ -336,13 +336,15 @@ while collision.find('pipesmall') < 0 and collision != '':
 time.sleep(2)
 
 ep_cnt = 0
-img = []
+tracking_img = []
+period = 10  # 이동 경로 이미지 저장 에피소드 간격
 
 # Takes about 4 min to train
 for ep in range(total_episodes):
     ep_cnt = ep
-    if ep == 0 or ep + 1 % 10 == 0:
-        img = cv.imread('map.png', cv.IMREAD_GRAYSCALE)
+    # if ep == 0 or ep + 1 % period == 0:
+    tracking_img = cv.imread('map.png', cv.IMREAD_GRAYSCALE)
+
     # prev_state = env.reset()
     prev_state = [client.getCarState().kinematics_estimated.position.x_val,  # 차량 위치 x 좌표
                   client.getCarState().kinematics_estimated.position.y_val,  # 차량 위치 y 좌표
@@ -411,8 +413,8 @@ for ep in range(total_episodes):
                  client.getDistanceSensorData("Distance4").distance]        # 좌측 거리 센서
         
         # 차량 이동 경로 기록
-        if ep == 0 or ep+1 % 10 == 0:
-            img = tracking.tracking(img, state[0], state[1])
+        # if ep == 0 or ep+1 % period == 0:
+        tracking_img = tracking.tracking(tracking_img, state[0], state[1])
 
         # reward = 1/1000 if ((client.simGetCollisionInfo().object_name).lower()).find('pipesmall') >= 0 else -1
 
@@ -473,14 +475,20 @@ for ep in range(total_episodes):
             print('Final Reward :', episodic_reward)
             print('Total Steps :', total_steps)
 
-            if ep == 0 or ep + 1 % 10 == 0:
-                cv.imwrite(".\\tracking\\" + str(start_ymd) + '_' + str(start_hm) + "\\ep" + str(ep+1) + ".png", img)
-                print('image saved')
-                sim_stop()
-                exit()
+            if ep == 0 or (ep + 1) % period == 0:
+                cv.imwrite(".\\tracking\\" + str(start_ymd) + '_' + str(start_hm) + "\\ep" + str(ep+1) + ".png",
+                           tracking_img)
+                print('tracking image saved')
 
             is_captured = 0
 
+            sim_stop()
+            sim_stop()
+
+            if ep+1 == total_episodes:
+                break
+
+            client, car_controls = sim_start()
             sim_stop()
             sim_stop()
             client, car_controls = sim_start()
@@ -493,11 +501,12 @@ for ep in range(total_episodes):
 
     # Mean of last 40 episodes
     avg_reward = np.mean(ep_reward_list[-40:])
-    print("Episode * {} * Avg Reward is ==> {}".format(ep, avg_reward))
+    print("Episode * {} * Avg Reward is ==> {}".format(ep+1, avg_reward))
     avg_reward_list.append(avg_reward)
 
 
 save_model()
+print('model weight saved')
 
 sim_stop()
 sim_stop()
@@ -509,4 +518,5 @@ plt.xlabel("Episode")
 plt.ylabel("Avg. Epsiodic Reward")
 ct = time.localtime()
 plt.savefig('.\\graph\\' + str(start_ymd) + '_' + str(start_hm) + '.png')
+print('graph saved')
 plt.show()

@@ -1,7 +1,6 @@
 import setup_path
 import cv2 as cv
 import numpy as np
-import time
 
 
 def tracking(mapimg, x_val, y_val):

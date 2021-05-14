@@ -52,27 +52,37 @@ y_len = 45
 x_block = round(np.shape(mapimg)[1]/x_len, 1)
 y_block = round(np.shape(mapimg)[0]/y_len, 1)
 
-client, car_controls = sim_start()
+# client, car_controls = sim_start()
 
-s_t = time.time()
-e_t = time.time()
+cnt = 0
+while cnt < 5:
+    mapimg = cv.imread('map.png', cv.IMREAD_GRAYSCALE)
 
-while e_t - s_t < 15:
-    x = round(client.getCarState().kinematics_estimated.position.x_val, 1) + 11
-    y = round(client.getCarState().kinematics_estimated.position.y_val, 1) + 41
+    client, car_controls = sim_start()
 
-    x = int(x * x_block)
-    y = int(y * y_block)
-
-    x = 2 if x-2 < 0 else x
-    x = img_x-3 if x+2 > img_x-3 else x
-    y = 2 if y-2 < 0 else y
-    y = img_y-3 if y+2 > img_y-3 else y
-
-    mapimg[y-2:y+2, x-2:x+2] = 255
-
+    s_t = time.time()
     e_t = time.time()
 
-sim_stop()
+    while e_t - s_t < 15:
+        x = round(client.getCarState().kinematics_estimated.position.x_val, 1) + 11
+        y = round(client.getCarState().kinematics_estimated.position.y_val, 1) + 41
 
-cv.imwrite('.\\tracking\\tracking.png', mapimg)
+        x = int(x * x_block)
+        y = int(y * y_block)
+
+        x = 2 if x-2 < 0 else x
+        x = img_x-3 if x+2 > img_x-3 else x
+        y = 2 if y-2 < 0 else y
+        y = img_y-3 if y+2 > img_y-3 else y
+
+        mapimg[y-2:y+2, x-2:x+2] = 255
+
+        e_t = time.time()
+
+    cv.imwrite('.\\tracking\\tracking' + str(cnt) + '.png', mapimg)
+
+    cnt += 1
+    sim_stop()
+    sim_stop()
+
+
