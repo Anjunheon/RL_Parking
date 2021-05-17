@@ -13,7 +13,7 @@ def tracking(mapimg, x_val, y_val):
     y_block = round(np.shape(mapimg)[0]/y_len, 1)
 
     x = round(x_val, 1) + 11
-    y = round(y_val, 1) + 41
+    y = round(y_val, 1) + 42
 
     x = int(x * x_block)
     y = int(y * y_block)

@@ -1,6 +1,7 @@
 import gym
 import tensorflow as tf
 from tensorflow.keras import layers
+from tensorflow.keras.utils import plot_model
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
@@ -249,12 +250,10 @@ def capture_goal():  # 목표 지점의 언리얼 좌표 -> 에어심 좌표 변
     airsim_goals = [[6, -14], [6, -17], [6, -22], [6, -25], [6, -30], [6, -33],  # 우측
                     [-7, -14], [-7, -17], [-7, -22], [-7, -25], [-7, -30]]  # 좌측
 
-    # 좌표 출력 부분 스크린샷 캡쳐
-    img = pyautogui.screenshot('goal.png', region=(36, 90, 210, 15))  # 전체화면(F11) 기준
+    pyautogui.screenshot('goal.png', region=(35, 90, 350, 25))  # 전체화면(F11) 기준
+
     # 좌표 스크린샷 문자열로 변환
     goal_pos = pytesseract.image_to_string(Image.open('goal.png'))
-    # print(goal_pos[:-2])
-    
     # x, y 좌표 구분 -> 좌표 값 float 변환
     goal_pos = str.split(goal_pos[:-2], ' ')
  
@@ -301,6 +300,15 @@ critic_model = get_critic()
 target_actor = get_actor()
 target_critic = get_critic()
 
+os.environ["PATH"] += os.pathsep + 'C:/Program Files (x86)/Graphviz2.38/bin/'
+
+plot_model(actor_model, to_file='.\\models_archtecture\\actor.png', show_shapes=True)
+plot_model(critic_model, to_file='.\\models_archtecture\\critic.png', show_shapes=True)
+plot_model(target_actor, to_file='.\\models_archtecture\\target_actor.png', show_shapes=True)
+plot_model(target_critic, to_file='.\\models_archtecture\\target_critic.png', show_shapes=True)
+
+exit()
+
 # Making the weights equal initially
 target_actor.set_weights(actor_model.get_weights())
 target_critic.set_weights(critic_model.get_weights())
@@ -312,7 +320,7 @@ actor_lr = 0.001
 critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
 actor_optimizer = tf.keras.optimizers.Adam(actor_lr)
 
-total_episodes = 10
+total_episodes = 200
 # Discount factor for future rewards
 gamma = 0.99
 # Used to update target networks
@@ -337,11 +345,15 @@ time.sleep(2)
 
 ep_cnt = 0
 tracking_img = []
-period = 10  # 이동 경로 이미지 저장 에피소드 간격
+period = 5  # 이동 경로 이미지 저장 에피소드 간격
+
+step_df = 0.99  # 스텝 감가율 (에피소드가 일찍 종료될 수록)
 
 # Takes about 4 min to train
 for ep in range(total_episodes):
     ep_cnt = ep
+    r_w = 1000 * (step_df ** ep)  # 일찍 부딪힐수록 더 큰 - 보상
+
     # if ep == 0 or ep + 1 % period == 0:
     tracking_img = cv.imread('map.png', cv.IMREAD_GRAYSCALE)
 
@@ -424,7 +436,7 @@ for ep in range(total_episodes):
         else:
             print('Episode', ep+1, ': Crash!!')
             # reward += -1
-            reward = -100
+            reward = -100 * r_w
             done = True
 
         if (goal[0] > 0):
@@ -432,14 +444,14 @@ for ep in range(total_episodes):
                     goal[1] - 1 < client.getCarState().kinematics_estimated.position.y_val < goal[1] + 1):
                 print('Episode', ep+1, ': Success!!')
                 # reward += 1
-                reward = 100
+                reward = 100 * r_w
                 done = True
         elif (goal[0] < 0):
             if (-9 < client.getCarState().kinematics_estimated.position.x_val < -7 and
                     goal[1] - 1 < client.getCarState().kinematics_estimated.position.y_val < goal[1] + 1):
                 print('Episode', ep+1, ': Success!!')
                 # reward += 1
-                reward = 100
+                reward = 100 * r_w
                 done = True
 
         if round(prev_state[0], 2) == round(state[0], 2) and round(prev_state[1], 2) == round(state[1], 2):
@@ -457,10 +469,10 @@ for ep in range(total_episodes):
                     print('Episode', ep+1, ': Don''t just stand there!!')
                     count = 0
                     # reward += -1
-                    reward = -200
+                    reward = -200 * r_w
                     done = True
         else:
-            reward = 1/100000
+            reward = 1/100000 * r_w
             count = 0
 
         buffer.record((prev_state, action, reward, state))
