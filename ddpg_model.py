@@ -15,6 +15,7 @@ import pytesseract
 from PIL import Image
 
 import tracking
+import restart_unreal
 
 physical_devices = tf.config.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
@@ -64,7 +65,7 @@ class OUActionNoise:
 
 
 class Buffer:
-    def __init__(self, buffer_capacity=100000, batch_size=64):
+    def __init__(self, buffer_capacity=50000, batch_size=64):
         # Number of "experiences" to store at max
         self.buffer_capacity = buffer_capacity
         # Num of tuples to train on.
@@ -159,6 +160,7 @@ def get_actor():
     inputs = layers.Input(shape=(num_states,))
     out = layers.Dense(256, activation="relu")(inputs)
     out = layers.Dense(256, activation="relu")(out)
+    out = layers.Dense(256, activation="relu")(out)
     outputs = layers.Dense(4, activation="tanh", kernel_initializer=last_init)(out)
 
     model = tf.keras.Model(inputs, outputs)
@@ -199,7 +201,8 @@ def policy(state, noise_object):
 
     legal_action = [np.clip(sampled_actions[0], 0, 1),  # brake
                     np.clip(sampled_actions[1], -1, 1),  # steering
-                    np.clip(sampled_actions[2], -1, 1),  # throttle
+                    # np.clip(sampled_actions[2], -1, 1),  # throttle
+                    np.clip(sampled_actions[2], 0, 0.5),  # throttle
                     sampled_actions[3]]  # direction
 
     return [np.squeeze(legal_action)]
@@ -220,7 +223,14 @@ def sim_start():  # 시뮬레이터 실행
 
     # connect to the AirSim simulator
     client = airsim.CarClient()
-    client.confirmConnection()
+    try:
+        client.confirmConnection()
+    except:
+        print('Unreal connection error occurred!')
+        print('Try to reconnect..')
+        restart_unreal.err_restart()
+        pass
+
     client.enableApiControl(api_control)
     print("API Control enabled: %s\n" % client.isApiControlEnabled())
     car_controls = airsim.CarControls()
@@ -300,14 +310,13 @@ critic_model = get_critic()
 target_actor = get_actor()
 target_critic = get_critic()
 
-os.environ["PATH"] += os.pathsep + 'C:/Program Files (x86)/Graphviz2.38/bin/'
-
-plot_model(actor_model, to_file='.\\models_archtecture\\actor.png', show_shapes=True)
-plot_model(critic_model, to_file='.\\models_archtecture\\critic.png', show_shapes=True)
-plot_model(target_actor, to_file='.\\models_archtecture\\target_actor.png', show_shapes=True)
-plot_model(target_critic, to_file='.\\models_archtecture\\target_critic.png', show_shapes=True)
-
-exit()
+# 모델 시각화
+# os.environ["PATH"] += os.pathsep + 'C:/Program Files (x86)/Graphviz2.38/bin/'
+#
+# plot_model(actor_model, to_file='.\\models_archtecture\\actor.png', show_shapes=True)
+# plot_model(critic_model, to_file='.\\models_archtecture\\critic.png', show_shapes=True)
+# plot_model(target_actor, to_file='.\\models_archtecture\\target_actor.png', show_shapes=True)
+# plot_model(target_critic, to_file='.\\models_archtecture\\target_critic.png', show_shapes=True)
 
 # Making the weights equal initially
 target_actor.set_weights(actor_model.get_weights())
@@ -320,7 +329,7 @@ actor_lr = 0.001
 critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
 actor_optimizer = tf.keras.optimizers.Adam(actor_lr)
 
-total_episodes = 200
+total_episodes = 1000
 # Discount factor for future rewards
 gamma = 0.99
 # Used to update target networks
@@ -435,23 +444,23 @@ for ep in range(total_episodes):
             done = False
         else:
             print('Episode', ep+1, ': Crash!!')
-            # reward += -1
-            reward = -100 * r_w
+            reward += -1
+            # reward = -100 * r_w
             done = True
 
         if (goal[0] > 0):
             if (6 < client.getCarState().kinematics_estimated.position.x_val < 8 and
                     goal[1] - 1 < client.getCarState().kinematics_estimated.position.y_val < goal[1] + 1):
                 print('Episode', ep+1, ': Success!!')
-                # reward += 1
-                reward = 100 * r_w
+                reward += 1
+                # reward = 100 * r_w
                 done = True
         elif (goal[0] < 0):
             if (-9 < client.getCarState().kinematics_estimated.position.x_val < -7 and
                     goal[1] - 1 < client.getCarState().kinematics_estimated.position.y_val < goal[1] + 1):
                 print('Episode', ep+1, ': Success!!')
-                # reward += 1
-                reward = 100 * r_w
+                reward += 1
+                # reward = 100 * r_w
                 done = True
 
         if round(prev_state[0], 2) == round(state[0], 2) and round(prev_state[1], 2) == round(state[1], 2):
@@ -468,11 +477,12 @@ for ep in range(total_episodes):
                 if end_time - start_time >= 10:
                     print('Episode', ep+1, ': Don''t just stand there!!')
                     count = 0
-                    # reward += -1
-                    reward = -200 * r_w
+                    reward += -1
+                    # reward = -200 * r_w
                     done = True
         else:
-            reward = 1/100000 * r_w
+            reward = 1/100000
+            # reward = 1/100000 * r_w
             count = 0
 
         buffer.record((prev_state, action, reward, state))
@@ -491,6 +501,9 @@ for ep in range(total_episodes):
                 cv.imwrite(".\\tracking\\" + str(start_ymd) + '_' + str(start_hm) + "\\ep" + str(ep+1) + ".png",
                            tracking_img)
                 print('tracking image saved')
+
+            if ep == 0 or (ep + 1) % 100 == 0:  # 100 에피소드마다 모델 저장
+                save_model()
 
             is_captured = 0
 

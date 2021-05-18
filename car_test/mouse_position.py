@@ -7,6 +7,7 @@ while True:
     print(pyautogui.position())
     time.sleep(1)  # (40, 110) (240, 123)
 
+"""
     # 좌표 출력 부분 스크린샷 캡쳐
     img = pyautogui.screenshot('goal.png', region=(36, 90, 210, 15))  # 전체화면(F11) 기준
     # 좌표 스크린샷 문자열로 변환
@@ -24,3 +25,4 @@ while True:
         y = int(float(y[3:]))
     else:
         y = int(float(y[2:]))
+"""
