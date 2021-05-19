@@ -202,7 +202,7 @@ def policy(state, noise_object):
     legal_action = [np.clip(sampled_actions[0], 0, 1),  # brake
                     np.clip(sampled_actions[1], -1, 1),  # steering
                     # np.clip(sampled_actions[2], -1, 1),  # throttle
-                    np.clip(sampled_actions[2], 0, 0.5),  # throttle
+                    np.clip(sampled_actions[2], -0.5, 0.5),  # throttle
                     sampled_actions[3]]  # direction
 
     return [np.squeeze(legal_action)]
@@ -222,14 +222,17 @@ def sim_start():  # 시뮬레이터 실행
     pyautogui.click(1125, 455)
 
     # connect to the AirSim simulator
+
     client = airsim.CarClient()
+
     try:
         client.confirmConnection()
     except:
         print('Unreal connection error occurred!')
         print('Try to reconnect..')
         restart_unreal.err_restart()
-        pass
+        client, car_controls = sim_start()
+        return client, car_controls
 
     client.enableApiControl(api_control)
     print("API Control enabled: %s\n" % client.isApiControlEnabled())
@@ -296,6 +299,8 @@ def save_model():
     target_actor.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_target_actor_ep" + str(ep_cnt+1) + ".h5")
     target_critic.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_target_critic_ep" + str(ep_cnt+1) + ".h5")
 
+    print('Model saved')
+
 
 
 
@@ -354,11 +359,12 @@ time.sleep(2)
 
 ep_cnt = 0
 tracking_img = []
-period = 5  # 이동 경로 이미지 저장 에피소드 간격
+tracking_img_save_period = 100  # 이동 경로 이미지 저장 에피소드 간격
+model_save_period = 1000  # 모델 저장 에피소드 간격
 
 step_df = 0.99  # 스텝 감가율 (에피소드가 일찍 종료될 수록)
 
-# Takes about 4 min to train
+
 for ep in range(total_episodes):
     ep_cnt = ep
     r_w = 1000 * (step_df ** ep)  # 일찍 부딪힐수록 더 큰 - 보상
@@ -420,7 +426,6 @@ for ep in range(total_episodes):
         client.setCarControls(car_controls)
 
         # Recieve state and reward from environment.
-        # state, reward, done, info = env.step(action)
         state = [client.getCarState().kinematics_estimated.position.x_val,  # 차량 위치 x 좌표
                  client.getCarState().kinematics_estimated.position.y_val,  # 차량 위치 y 좌표
                  client.getCarState().speed,                                # 차량 속도
@@ -497,12 +502,12 @@ for ep in range(total_episodes):
             print('Final Reward :', episodic_reward)
             print('Total Steps :', total_steps)
 
-            if ep == 0 or (ep + 1) % period == 0:
+            if ep == 0 or (ep + 1) % tracking_img_save_period == 0:
                 cv.imwrite(".\\tracking\\" + str(start_ymd) + '_' + str(start_hm) + "\\ep" + str(ep+1) + ".png",
                            tracking_img)
-                print('tracking image saved')
+                print('Tracking image saved')
 
-            if ep == 0 or (ep + 1) % 100 == 0:  # 100 에피소드마다 모델 저장
+            if ep == 0 or (ep + 1) % model_save_period == 0:  # 설정한 에피소드 간격마다 모델 저장
                 save_model()
 
             is_captured = 0
@@ -531,7 +536,6 @@ for ep in range(total_episodes):
 
 
 save_model()
-print('model weight saved')
 
 sim_stop()
 sim_stop()
@@ -543,5 +547,9 @@ plt.xlabel("Episode")
 plt.ylabel("Avg. Epsiodic Reward")
 ct = time.localtime()
 plt.savefig('.\\graph\\' + str(start_ymd) + '_' + str(start_hm) + '.png')
-print('graph saved')
+print('Graph saved')
 plt.show()
+
+print('Learning ended')
+
+
