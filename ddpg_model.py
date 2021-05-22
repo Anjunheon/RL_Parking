@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import setup_path
 import airsim
 import time
+import datetime
 import os
 import pyautogui
 import pytesseract
@@ -16,6 +17,8 @@ from PIL import Image
 
 import tracking
 import restart_unreal
+
+s_t = datetime.datetime.now()  # 학습 시작시간
 
 physical_devices = tf.config.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
@@ -199,11 +202,11 @@ def policy(state, noise_object):
     np.clip(sampled_actions[3], 0, 1)
     sampled_actions[3] = 0 if sampled_actions[3] < 0.5 else 1
 
-    legal_action = [np.clip(sampled_actions[0], 0, 1),  # brake
-                    np.clip(sampled_actions[1], -1, 1),  # steering
-                    # np.clip(sampled_actions[2], -1, 1),  # throttle
-                    np.clip(sampled_actions[2], -0.5, 0.5),  # throttle
-                    sampled_actions[3]]  # direction
+    legal_action = [(sampled_actions[0]+1)/2,  # brake (0 ~ 1)
+                    sampled_actions[1],        # steering (-1 ~ 1)
+                    # sampled_actions[2],      # throttle (-1 ~ 1)
+                    sampled_actions[2]/2,      # throttle (-0.5 ~ 0.5)
+                    sampled_actions[3]]        # direction (0 or 1)
 
     return [np.squeeze(legal_action)]
 
@@ -293,11 +296,11 @@ def capture_goal():  # 목표 지점의 언리얼 좌표 -> 에어심 좌표 변
 
 def save_model():
     # Save the weights
-    actor_model.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_actor_ep" + str(ep_cnt+1) + ".h5")
-    critic_model.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_critic_ep" + str(ep_cnt+1) + ".h5")
+    actor_model.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_actor_ep" + str(ep_cnt) + ".h5")
+    critic_model.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_critic_ep" + str(ep_cnt) + ".h5")
 
-    target_actor.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_target_actor_ep" + str(ep_cnt+1) + ".h5")
-    target_critic.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_target_critic_ep" + str(ep_cnt+1) + ".h5")
+    target_actor.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_target_actor_ep" + str(ep_cnt) + ".h5")
+    target_critic.save(".\\save_models\\" + str(start_ymd) + '_' + str(start_hm) + "\\parking_target_critic_ep" + str(ep_cnt) + ".h5")
 
     print('Model saved')
 
@@ -359,15 +362,15 @@ time.sleep(2)
 
 ep_cnt = 0
 tracking_img = []
-tracking_img_save_period = 100  # 이동 경로 이미지 저장 에피소드 간격
-model_save_period = 1000  # 모델 저장 에피소드 간격
+tracking_img_save_period = 20  # 이동 경로 이미지 저장 에피소드 간격
+model_save_period = 200  # 모델 저장 에피소드 간격
 
 step_df = 0.99  # 스텝 감가율 (에피소드가 일찍 종료될 수록)
 
 
 for ep in range(total_episodes):
-    ep_cnt = ep
-    r_w = 1000 * (step_df ** ep)  # 일찍 부딪힐수록 더 큰 - 보상
+    ep_cnt += 1
+    # r_w = 1000 * (step_df ** ep)  # 일찍 부딪힐수록 더 큰 - 보상
 
     # if ep == 0 or ep + 1 % period == 0:
     tracking_img = cv.imread('map.png', cv.IMREAD_GRAYSCALE)
@@ -449,7 +452,8 @@ for ep in range(total_episodes):
             done = False
         else:
             print('Episode', ep+1, ': Crash!!')
-            reward += -1
+            reward = -1
+            # reward += -1
             # reward = -100 * r_w
             done = True
 
@@ -457,19 +461,21 @@ for ep in range(total_episodes):
             if (6 < client.getCarState().kinematics_estimated.position.x_val < 8 and
                     goal[1] - 1 < client.getCarState().kinematics_estimated.position.y_val < goal[1] + 1):
                 print('Episode', ep+1, ': Success!!')
-                reward += 1
+                reward = 1
+                # reward += 1
                 # reward = 100 * r_w
                 done = True
         elif (goal[0] < 0):
             if (-9 < client.getCarState().kinematics_estimated.position.x_val < -7 and
                     goal[1] - 1 < client.getCarState().kinematics_estimated.position.y_val < goal[1] + 1):
                 print('Episode', ep+1, ': Success!!')
-                reward += 1
+                reward = 1
+                # reward += 1
                 # reward = 100 * r_w
                 done = True
 
         if round(prev_state[0], 2) == round(state[0], 2) and round(prev_state[1], 2) == round(state[1], 2):
-            reward = -1/1000
+            # reward = -1/1000
 
             if count == 0:
                 count += 1
@@ -479,14 +485,16 @@ for ep in range(total_episodes):
                 count += 1
                 end_time = time.time()
 
-                if end_time - start_time >= 10:
+                if end_time - start_time >= 5:  # 5초간 멈춰있을 시 -1 보상 및 에피소드 종료
                     print('Episode', ep+1, ': Don''t just stand there!!')
                     count = 0
-                    reward += -1
+                    reward = -1.1
+                    # reward += -1.1
                     # reward = -200 * r_w
                     done = True
         else:
             reward = 1/100000
+            # reward += 1/100000
             # reward = 1/100000 * r_w
             count = 0
 
@@ -545,11 +553,13 @@ sim_stop()
 plt.plot(avg_reward_list)
 plt.xlabel("Episode")
 plt.ylabel("Avg. Epsiodic Reward")
-ct = time.localtime()
 plt.savefig('.\\graph\\' + str(start_ymd) + '_' + str(start_hm) + '.png')
 print('Graph saved')
-plt.show()
 
 print('Learning ended')
 
+e_t = datetime.datetime.now()  # 학습 종료 시간
+l_t = e_t - s_t  # 학습 소요 시간
+print('Learning Time :', l_t)
 
+plt.show()
